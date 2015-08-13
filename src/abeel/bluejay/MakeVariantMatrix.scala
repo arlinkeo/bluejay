@@ -9,11 +9,10 @@ import atk.util.TimeInterval
 
 object MakeVariantMatrix extends Tool {
 
- case class Config(folder: File=null, vcf: File = null, outputPrefix: String = "")
+ case class Config(vcf: File = null, outputPrefix: String = "")
 
   def main(args: Array[String]): Unit = {
     val parser = new scopt.OptionParser[Config]("java -jar bluejay.jar variant-matrix") {
-      opt[File]('i', "input") required () action { (x, c) => c.copy(folder = x) } text ("Input VCF folder. Typically this is the reduced_vcf folder")
       opt[File]('v', "vcf") action { (x, c) => c.copy(vcf = x) } text ("File containing a list of VCF files")
       opt[String]('o',"output") action{ (x, c) => c.copy(outputPrefix = x) } text ("Output prefix")
     }
