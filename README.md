@@ -6,3 +6,13 @@ It was designed to compare lineage membership vs. AP of variants, to find lineag
 
 
 Downloads are availble: http://abeellab.org/jenkins/bluejay/
+
+== Basic usage
+
+java -jar bluejay.jar for general help
+
+Recipe:
+
+- build lineage matrix
+- build variant matrix
+- associate two matrices
