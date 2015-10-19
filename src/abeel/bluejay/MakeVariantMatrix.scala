@@ -9,12 +9,13 @@ import atk.util.TimeInterval
 
 object MakeVariantMatrix extends Tool {
 
- case class Config(vcf: File = null, outputPrefix: String = "")
+ case class Config(vcf: File = null, outputPrefix: String = "", snpsOnly: Boolean = false)
 
   def main(args: Array[String]): Unit = {
     val parser = new scopt.OptionParser[Config]("java -jar bluejay.jar variant-matrix") {
-      opt[File]('v', "vcf") action { (x, c) => c.copy(vcf = x) } text ("File containing a list of VCF files")
+      opt[File]('v', "vcf") required () action { (x, c) => c.copy(vcf = x) } text ("File containing a list of VCF files")
       opt[String]('o',"output") action{ (x, c) => c.copy(outputPrefix = x) } text ("Output prefix")
+      opt[Unit]("snps-only") action { (x, c) => c.copy(snpsOnly = true) } text ("Use only SNPs to make variant matrix.")
     }
 
     parser.parse(args, Config()).map { config =>
@@ -28,8 +29,9 @@ object MakeVariantMatrix extends Tool {
     val listOfVariants = files.foldLeft(Set[String]())((r, c) => r ++ {
       println("Pre-processing " + c)
       val lines = VCFFile(c)
-
-      lines.filter(_.pass).map(vl => vl.pos + "_" + vl.ref + "_" + vl.alt)
+      
+      if (config.snpsOnly) lines.filter(_.pass).filter(vl => vl.refLength == 1 && vl.altLength == 1).map(vl => vl.pos + "_" + vl.ref + "_" + vl.alt)
+      else lines.filter(_.pass).map(vl => vl.pos + "_" + vl.ref + "_" + vl.alt)
 
     })
     println("Sorting")
