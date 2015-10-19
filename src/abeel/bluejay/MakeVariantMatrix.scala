@@ -53,7 +53,7 @@ object MakeVariantMatrix extends Tool {
       val elapsed = System.currentTimeMillis() - startTime + 1.0
       println("Processing: " + f + "\n\t" + idx + "/" + files.size + "\t" + new TimeInterval(elapsed.toLong) + "\tETA: " + new TimeInterval((((elapsed / idx) * files.size) - elapsed).toLong))
       val lines = VCFFile(f)
-      val g = f.toString()
+      val g = f.getParentFile.getName.toString()
       val arr = Array.ofDim[Int](variants.length)
       val listOfVars = if (config.snpsOnly) lines.toList.filter(_.pass).filter(vl => vl.refLength == 1 && vl.altLength == 1) else lines.toList.filter(_.pass)
       listOfVars.map(vl => {
