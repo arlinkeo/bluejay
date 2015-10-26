@@ -11,7 +11,14 @@ object Matrix extends Tool {
   
   def fromFile(file: File): Matrix = {
     new Matrix(tLines(file).map(f => f.split("\t").toList))
-
+  }
+  
+  def fromFile(file: File, cn: List[Int]): Matrix = {
+    new Matrix(tColumns(tLines(file), (0 :: cn)))  
+  }
+  
+  def rowsFromFile(file: File): Matrix = {
+    new Matrix(tColumns(tLines(file), List(0)))  
   }
 }
 
@@ -27,6 +34,8 @@ class Matrix(tmpRowMatrix: List[List[String]]) extends Tool {
   lazy val columnLabels = tmpRowMatrix(0).drop(1)
   lazy val rowLabels = tmpColMatrix(0).drop(1)
 
+  lazy val col1Label = tmpRowMatrix(0).drop(1)(0)
+  
   lazy val colMatrix = tmpColMatrix.map(col => {
     val bs = BitSet(col.drop(1).zipWithIndex.filter(p => p._1 == "1").map(_._2): _*)
     col.head -> bs

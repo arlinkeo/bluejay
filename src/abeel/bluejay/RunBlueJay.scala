@@ -37,15 +37,24 @@ object RunBlueJay extends Tool with BitSetTools {
       opt[Unit]("debug") action { (x, c) => c.copy(debug = true) } text ("Output information about variants that fail the criteria as commented output (default = false)")
 
     }
-
+    
+    /** Elapsed time function */
+    def time[R](block: => R): R = {
+      val t0 = System.currentTimeMillis()
+      val result = block // call-by-name
+      val t1 = System.currentTimeMillis()
+      println("Elapsed time: " + (t1 - t0) + "ms")
+      result
+    }
+    
     parser.parse(args, Config()).map { config =>
-      run(config.lineageMatrix, config.variantMatrix, config.outputPrefix, config);
+      time{run(config.lineageMatrix, config.variantMatrix, config.outputPrefix, config)}
     }
 
   }
   def run(lineageMatrix: File, variantMatrix: File, outputPrefix: String, config: Config) {
     val tmpLineages = Matrix.fromFile(lineageMatrix)
-    val tmpSNP = Matrix.fromFile(variantMatrix)
+    val tmpSNP = Matrix.rowsFromFile(variantMatrix) //Matrix with only column 0 (rowLabels).
 
     val nonZero = (tmpLineages.rowLabels.filter(f => {
       val row = tmpLineages.row(f)
@@ -56,16 +65,18 @@ object RunBlueJay extends Tool with BitSetTools {
       println("None of your strains appear to have lineage information, please make sure you're using the correct matrix format.\nExiting...")
       System.exit(-1)
     }
-
     println(tmpLineages.rowLabels.size + "\t" + tmpSNP.rowLabels.size + "\t" + nonZero.size)
 
     val matLineages = rowMatch(nonZero, tmpLineages)
-    val matSNPS = rowMatch(nonZero, tmpSNP)
-    (matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
 
-    val cm = new FrequencyMap
-    val x = matSNPS.colMatrix.mapValues(f => f.size)
-    x.map(f => { cm.count(f._2) })
+    /** Reduce memory for large matrices */
+    val uniqueVariants = tLines(variantMatrix)(0).split("\t").drop(1).length
+    println("Unique variants: " + uniqueVariants)
+
+    /* val cm = new FrequencyMap
+     * val x = matSNPS.colMatrix.mapValues(f => f.size)
+     * x.map(f => { cm.count(f._2) })
+     */
 
     val step1File = outputPrefix + "lineage_snp.tsv"
     val pw = new PrintWriter(step1File)
@@ -81,36 +92,46 @@ object RunBlueJay extends Tool with BitSetTools {
     pw.println("# absence = " + config.absence)
     pw.println("##")
     pw.println("# Variant summary")
-    pw.println("# total = " + matSNPS.columnLabels.size)
-    pw.println("# occur in single sample = " + cm.getOrElse(1, null))
-    pw.println("# occur in multiple samples = " + (cm.totalCount - cm.getOrElse(1, null)))
+    pw.println("# total = " + uniqueVariants)
+    //pw.println("# occur in single sample = " + cm.getOrElse(1, null))
+    //pw.println("# occur in multiple samples = " + (cm.totalCount - cm.getOrElse(1, null)))
     pw.println("#AC2\ttpr(sensitivity)\ttnr(specificity)\tppv\tnpv\ttp\ttn\tfp\tfn\tpvalue\tlineage\tAP\tvariant")
+
     for (cn <- matLineages.columnLabels.filterNot(_.equals("$$"))) {
       val l = matLineages.column(cn)
       println("Processing: " + cn + "\t" + l.count(_ => true))
-      for (rn <- matSNPS.columnLabels) {
 
-        def eval(x: BitSet, postFix: String) {
-          val bjn = new BJN(matSNPS.rowLabels.size, x, l)
+      /** Make new variant matrix per 1000 variants/columns */
+      for (variant <- 1 to uniqueVariants by 1000) {
+        
+        val range = if (variant + 1000 > uniqueVariants) (variant to (uniqueVariants)).toList else (variant until (variant + 1000)).toList
+        val tmpSNP = Matrix.fromFile(variantMatrix, range)
+        val matSNPS = rowMatch(nonZero, tmpSNP)
+        (matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
 
-          val outputString = List(bjn.ac2, bjn.tpr, bjn.tnr, bjn.ppv, bjn.npv, bjn.tp, bjn.tn, bjn.fp, bjn.fn, "" + bjn.pvalue, rn, postFix, cn).map(f => f match {
-            case x: Int => "" + x
-            case x: Double => nfP.format(x)
-            case y: String => y
+        for (rn <- matSNPS.columnLabels) {
+          def eval(x: BitSet, postFix: String) {
+            val bjn = new BJN(matSNPS.rowLabels.size, x, l)
 
-            case _ => f
-          }).mkString("\t")
-          if (bjn.tp >= config.minTP && bjn.tpr >= config.minTPR && bjn.tnr >= config.minTNR && bjn.ppv >= config.minPPV && bjn.npv >= config.minNPV)
-            pw.println(outputString)
-          else if (config.debug)
-            pw.println("# " + outputString)
-        }
+            val outputString = List(bjn.ac2, bjn.tpr, bjn.tnr, bjn.ppv, bjn.npv, bjn.tp, bjn.tn, bjn.fp, bjn.fn, "" + bjn.pvalue, rn, postFix, cn).map(f => f match {
+              case x: Int => "" + x
+              case x: Double => nfP.format(x)
+              case y: String => y
 
-        val s = matSNPS.column(rn)
-        eval(s, "presence")
-        if (config.absence) {
-          val t = s ^ BitSet((0 to matSNPS.rowLabels.size): _*)
-          eval(t, "absence")
+              case _ => f
+            }).mkString("\t")
+            if (bjn.tp >= config.minTP && bjn.tpr >= config.minTPR && bjn.tnr >= config.minTNR && bjn.ppv >= config.minPPV && bjn.npv >= config.minNPV)
+              pw.println(outputString)
+            else if (config.debug)
+              pw.println("# " + outputString)
+          }
+
+          val s = matSNPS.column(rn)
+          eval(s, "presence")
+          if (config.absence) {
+            val t = s ^ BitSet((0 to matSNPS.rowLabels.size): _*)
+            eval(t, "absence")
+          }
         }
 
       }
@@ -121,6 +142,14 @@ object RunBlueJay extends Tool with BitSetTools {
     val pw2 = new PrintWriter(outputPrefix + "lineageSNP_stats.txt")
     pw2.println(tLines(step1File).map(_.split("\t")(12)).groupBy(identity).mapValues(_.size).mkString("\n"))
     pw2.close
+
+    /** Print used memory */
+    val mb = 1024 * 1024
+    val runtime = Runtime.getRuntime
+    println("** Used Memory:  " + (runtime.totalMemory - runtime.freeMemory) / mb + " Mb")
+    println("** Free Memory:  " + runtime.freeMemory / mb + " Mb")
+    println("** Total Memory: " + runtime.totalMemory / mb + " Mb")
+    println("** Max Memory:   " + runtime.maxMemory / mb + " Mb")
 
   }
 
