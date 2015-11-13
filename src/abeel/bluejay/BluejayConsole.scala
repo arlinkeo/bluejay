@@ -15,7 +15,8 @@ object BluejayConsole {
         case "lineage-matrix" => MakeLineageMatrix.main(args.drop(1))
         case "variant-matrix" => MakeVariantMatrix.main(args.drop(1))
         case "associate" => RunBlueJay.main(args.drop(1))
-
+        case "transpose-matrix" => TransposeMatrix.main(args.drop(1))
+        
         case _ => listInstructions
       }
     }
@@ -29,6 +30,7 @@ object BluejayConsole {
     println("\tlineage-matrix         Build matrix from a lineage file")
     println("\tvariant-matrix         Build matrix from directory of VCF files")
     println("\tassociate              Associate lineages with variants")
+    println("\ttranspose-matrix       Transpose variant-matrix")
     println("\tlist | help            Show help")
     
 
