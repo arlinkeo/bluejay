@@ -11,6 +11,7 @@ import atk.util.BitSetTools
 import scala.collection.BitSet
 import java.io.File
 import scala.collection.JavaConversions._
+import scala.io.Source
 
 object RunBlueJay extends Tool with BitSetTools {
 
@@ -25,7 +26,7 @@ object RunBlueJay extends Tool with BitSetTools {
   def main(args: Array[String]): Unit = {
     val parser = new scopt.OptionParser[Config]("java -jar bluejay.jar associate") {
       opt[File]("lineage") required () action { (x, c) => c.copy(lineageMatrix = x) } text ("Input file with the lineage matrix") validate { x => if (x.exists) success else failure("Lineage matrix file not found: " + x) }
-      opt[File]("variant") required () action { (x, c) => c.copy(variantMatrix = x) } text ("Input file with the variant matrix") validate { x => if (x.exists) success else failure("Variant matrix file not found: " + x) }
+      opt[File]("variant") required () action { (x, c) => c.copy(variantMatrix = x) } text ("Input file with the transposed variant matrix") validate { x => if (x.exists) success else failure("Variant matrix file not found: " + x) }
 
       opt[String]('o', "output") action { (x, c) => c.copy(outputPrefix = x) } text ("Output prefix")
       opt[Int]("min-tp") action { (x, c) => c.copy(minTP = x) } text ("Minimum number of true positives for association (absolute count, default 10)")
@@ -43,29 +44,36 @@ object RunBlueJay extends Tool with BitSetTools {
     }
 
   }
+  
   def run(lineageMatrix: File, variantMatrix: File, outputPrefix: String, config: Config) {
     val tmpLineages = Matrix.fromFile(lineageMatrix)
-    val tmpSNP = Matrix.fromFile(variantMatrix)
+    //val tmpSNP = Matrix.fromFile(variantMatrix)
 
+    println("tmpL " + tmpLineages.tmpColMatrix)
+    val tVariantMatrix = Source.fromFile(config.variantMatrix).getLines.toList
+    println(tVariantMatrix.size + " variants")
+    val sampleNames = tVariantMatrix.take(1).mkString.split("\t").drop(1).toList
+    //println(sampleNames.size)
+    
     val nonZero = (tmpLineages.rowLabels.filter(f => {
       val row = tmpLineages.row(f)
       row.size > 0
-    }).toSet.intersect(tmpSNP.rowLabels.toSet)).toList
+    }).toSet.intersect(sampleNames.toSet)).toList
 
     if (nonZero.size == 0) {
       println("None of your strains appear to have lineage information, please make sure you're using the correct matrix format.\nExiting...")
       System.exit(-1)
     }
 
-    println(tmpLineages.rowLabels.size + "\t" + tmpSNP.rowLabels.size + "\t" + nonZero.size)
+    println(tmpLineages.rowLabels.size + "\t" + sampleNames.size + "\t" + nonZero.size)
 
     val matLineages = rowMatch(nonZero, tmpLineages)
-    val matSNPS = rowMatch(nonZero, tmpSNP)
-    (matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
-
-    val cm = new FrequencyMap
-    val x = matSNPS.colMatrix.mapValues(f => f.size)
-    x.map(f => { cm.count(f._2) })
+    //val matSNPS = rowMatch(nonZero, tmpSNP)
+    //(matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
+    
+    //val cm = new FrequencyMap
+    //val x = matSNPS.colMatrix.mapValues(f => f.size)
+    //x.map(f => { cm.count(f._2) })
 
     val step1File = outputPrefix + "lineage_snp.tsv"
     val pw = new PrintWriter(step1File)
@@ -81,19 +89,20 @@ object RunBlueJay extends Tool with BitSetTools {
     pw.println("# absence = " + config.absence)
     pw.println("##")
     pw.println("# Variant summary")
-    pw.println("# total = " + matSNPS.columnLabels.size)
-    pw.println("# occur in single sample = " + cm.getOrElse(1, null))
-    pw.println("# occur in multiple samples = " + (cm.totalCount - cm.getOrElse(1, null)))
+    pw.println("# total = " + (tVariantMatrix.size - 1))
+    //pw.println("# occur in single sample = " + cm.getOrElse(1, null))
+    //pw.println("# occur in multiple samples = " + (cm.totalCount - cm.getOrElse(1, null)))
     pw.println("#AC2\ttpr(sensitivity)\ttnr(specificity)\tppv\tnpv\ttp\ttn\tfp\tfn\tpvalue\tlineage\tAP\tvariant")
-    for (cn <- matLineages.columnLabels.filterNot(_.equals("$$"))) {
+    for (cn <- matLineages.columnLabels.filterNot(_.equals("$$"))) { // For each cluster in lineage-matrix
       val l = matLineages.column(cn)
       println("Processing: " + cn + "\t" + l.count(_ => true))
-      for (rn <- matSNPS.columnLabels) {
-
+      //for (rn <- matSNPS.columnLabels) {
+      tVariantMatrix.drop(1).foreach{ variantLine =>
+        val variant = variantLine.split("\t").take(1).mkString
         def eval(x: BitSet, postFix: String) {
-          val bjn = new BJN(matSNPS.rowLabels.size, x, l)
+          val bjn = new BJN(sampleNames.size, x, l)
 
-          val outputString = List(bjn.ac2, bjn.tpr, bjn.tnr, bjn.ppv, bjn.npv, bjn.tp, bjn.tn, bjn.fp, bjn.fn, "" + bjn.pvalue, rn, postFix, cn).map(f => f match {
+          val outputString = List(bjn.ac2, bjn.tpr, bjn.tnr, bjn.ppv, bjn.npv, bjn.tp, bjn.tn, bjn.fp, bjn.fn, "" + bjn.pvalue, variant, postFix, cn).map(f => f match {
             case x: Int => "" + x
             case x: Double => nfP.format(x)
             case y: String => y
@@ -106,10 +115,12 @@ object RunBlueJay extends Tool with BitSetTools {
             pw.println("# " + outputString)
         }
 
-        val s = matSNPS.column(rn)
+        val tmpSNP = new Matrix(List(("$$" +: sampleNames), variantLine.split("\t").toList).transpose) // Matrix with header row and 1 variant row
+        val matSNPS = rowMatch(nonZero, tmpSNP)
+        val s = matSNPS.column(variant)//matSNPS.column(rn)
         eval(s, "presence")
         if (config.absence) {
-          val t = s ^ BitSet((0 to matSNPS.rowLabels.size): _*)
+          val t = s ^ BitSet((0 to sampleNames.size): _*)
           eval(t, "absence")
         }
 
