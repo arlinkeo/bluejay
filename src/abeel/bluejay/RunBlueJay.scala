@@ -15,7 +15,7 @@ import scala.io.Source
 
 object RunBlueJay extends Tool with BitSetTools {
 
-  case class Config(lineageMatrix: File = null, variantMatrix: File = null, val debug: Boolean = false, outputPrefix: String = "", val minTP: Int = 10, val minTNR: Double = .9, val minTPR: Double = .9, val minNPV: Double = .9, val minPPV: Double = .9, val absence: Boolean = false)
+  case class Config(lineageMatrix: File = null, variantMatrix: File = null, val debug: Boolean = false, outputPrefix: String = "", val minTP: Int = 10, val minTNR: Double = .9, val minTPR: Double = .9, val minNPV: Double = .9, val minPPV: Double = .9, val presenceAbsence: Boolean = false, val absence: Boolean = false)
 
   override val version = """
     2014/11/17: Fixed issue where NPV and PPV were not properly set on the CLI
@@ -34,7 +34,8 @@ object RunBlueJay extends Tool with BitSetTools {
       opt[Double]("min-tpr") action { (x, c) => c.copy(minTPR = x) } text ("Minimum true posititive rate (sensitivity), percentage, default .9)")
       opt[Double]("min-ppv") action { (x, c) => c.copy(minPPV = x) } text ("Minimum positive predictive value (ppv), percentage, default .9)")
       opt[Double]("min-npv") action { (x, c) => c.copy(minNPV = x) } text ("Minimum negative predictive value (npv), percentage, default .9)")
-      opt[Unit]("absence") action { (x, c) => c.copy(absence = true) } text ("Investigate the absence of markers as association (default = false)")
+      opt[Unit]("presence-absence") action { (x, c) => c.copy(presenceAbsence = true) } text ("Investigate the presence and absence of markers as association (default = false)")
+      opt[Unit]("absence") action { (x, c) => c.copy(absence = true) } text ("Investigate only the absence of markers as association (default = false)")
       opt[Unit]("debug") action { (x, c) => c.copy(debug = true) } text ("Output information about variants that fail the criteria as commented output (default = false)")
 
     }
@@ -49,7 +50,6 @@ object RunBlueJay extends Tool with BitSetTools {
     val tmpLineages = Matrix.fromFile(lineageMatrix)
     //val tmpSNP = Matrix.fromFile(variantMatrix)
 
-    println("tmpL " + tmpLineages.tmpColMatrix)
     val tVariantMatrix = Source.fromFile(config.variantMatrix).getLines.toList
     println(tVariantMatrix.size + " variants")
     val sampleNames = tVariantMatrix.take(1).mkString.split("\t").drop(1).toList
@@ -68,6 +68,7 @@ object RunBlueJay extends Tool with BitSetTools {
     println(tmpLineages.rowLabels.size + "\t" + sampleNames.size + "\t" + nonZero.size)
 
     val matLineages = rowMatch(nonZero, tmpLineages)
+    println("matLineages: " + matLineages.rowLabels)
     //val matSNPS = rowMatch(nonZero, tmpSNP)
     //(matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
     
@@ -118,12 +119,18 @@ object RunBlueJay extends Tool with BitSetTools {
         val tmpSNP = new Matrix(List(("$$" +: sampleNames), variantLine.split("\t").toList).transpose) // Matrix with header row and 1 variant row
         val matSNPS = rowMatch(nonZero, tmpSNP)
         val s = matSNPS.column(variant)//matSNPS.column(rn)
-        eval(s, "presence")
-        if (config.absence) {
-          val t = s ^ BitSet((0 to sampleNames.size): _*)
+        println("matSNPS: " + matSNPS.rowLabels)
+        
+        val t = s ^ BitSet((0 to sampleNames.size): _*)
+        if (config.presenceAbsence) { // Find both presence and absence SNPs
+          eval(s, "presence")          
           eval(t, "absence")
+        } else if (config.absence) { // Find only absence SNPs
+          eval(t, "absence")
+        } else { // Find only presence SNPs (default)
+          eval(s, "presence")
         }
-
+                
       }
 
     }
