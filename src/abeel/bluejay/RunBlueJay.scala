@@ -68,7 +68,6 @@ object RunBlueJay extends Tool with BitSetTools {
     println(tmpLineages.rowLabels.size + "\t" + sampleNames.size + "\t" + nonZero.size)
 
     val matLineages = rowMatch(nonZero, tmpLineages)
-    println("matLineages: " + matLineages.rowLabels)
     //val matSNPS = rowMatch(nonZero, tmpSNP)
     //(matLineages.rowLabels.zip(matSNPS.rowLabels)).map(f => assume(f._1 == f._2))
     
@@ -119,7 +118,6 @@ object RunBlueJay extends Tool with BitSetTools {
         val tmpSNP = new Matrix(List(("$$" +: sampleNames), variantLine.split("\t").toList).transpose) // Matrix with header row and 1 variant row
         val matSNPS = rowMatch(nonZero, tmpSNP)
         val s = matSNPS.column(variant)//matSNPS.column(rn)
-        println("matSNPS: " + matSNPS.rowLabels)
         
         val t = s ^ BitSet((0 to sampleNames.size): _*)
         if (config.presenceAbsence) { // Find both presence and absence SNPs
