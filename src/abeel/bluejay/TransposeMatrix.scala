@@ -34,12 +34,12 @@ object TransposeMatrix extends Tool {
         pw.print("$$\t")
         pw.print(rows.mkString("\t"))
 
-        for (variant <- 1 until uniqueVariants by 20000) {
-          val range = if (variant + 20000 > uniqueVariants) (variant to (uniqueVariants)).toList else (variant until (variant + 20000)).toList
+        for (variant <- 1 until uniqueVariants by 10000) {
+          val range = if (variant + 10000 > uniqueVariants) (variant to (uniqueVariants)).toList else (variant until (variant + 10000)).toList
           println("Range " + range(0) + "-" + range.last)
           val submatrix = Matrix.fromFile(config.variantMatrix, range)
           for (i <- range) {
-            val idx = if (i % 20000 == 0) 20000 else i % 20000
+            val idx = if (i % 10000 == 0) 10000 else i % 10000
             pw.println
             pw.print(submatrix.tmpColMatrix(idx).mkString("\t"))
           }
